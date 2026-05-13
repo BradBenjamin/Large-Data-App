@@ -1,88 +1,115 @@
 import streamlit as st
-import lightgbm as lgb
-import numpy as np
+import requests
+import pandas as pd
 import time
-import os # Make sure to import os!
 
-# --- Page Configuration ---
-st.set_page_config(page_title="Review Predictor", page_icon="🛒", layout="centered")
+# --- Configuration ---
+# Set layout to "wide" to give us more horizontal room for 4 columns
+st.set_page_config(page_title="Review Predictor", page_icon="🛒", layout="wide")
+API_URL = "http://127.0.0.1:8000"
 
-# --- 1. Load the Model ---
-@st.cache_resource
-def load_model():
-    """Loads the LightGBM model efficiently using dynamic absolute paths."""
-    try:
-        # 1. Get the directory where this app.py file lives (the /app folder)
-        current_dir = os.path.dirname(os.path.abspath(__file__))
+# --- CSS Hacks to Eliminate Scrolling ---
+st.markdown("""
+    <style>
+        /* 1. Remove massive default top padding and expand width */
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
+            max-width: 95% !important;
+        }
+        /* 2. Hide the Streamlit header/footer for more space */
+        header {visibility: hidden;}
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
         
-        # 2. Build the path: go up one level (".."), then into "model", then the file
-        model_path = os.path.join(current_dir, "..", "model", "amazon_lgb_model.txt")
-        
-        # 3. Resolve it to a clean absolute path (e.g., C:/User/Project/model/amazon_lgb_model.txt)
-        model_path = os.path.abspath(model_path)
-        
-        # 4. Load the model
-        return lgb.Booster(model_file=model_path)
+        /* 3. Tighten up the gap between elements slightly */
+        .st-emotion-cache-1wivap2 {
+            gap: 0.5rem;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- Compact Header (Tweaked Up!) ---
+# Using HTML here allows us to force a negative margin-top to pull it up even higher
+st.markdown("<h2 style='text-align: center; margin-top: -40px; margin-bottom: 0px;'>🛒 Amazon Fine Food: Review Predictor</h2>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; margin-bottom: 10px;'>Predict whether a user will <b>Like</b> (≥ 4 stars) or <b>Dislike</b> (< 4 stars) this product.</p>", unsafe_allow_html=True)
+
+# Create tabs
+tab1, tab2 = st.tabs(["🎯 Single Prediction", "📂 Batch Prediction"])
+
+# --- TAB 1: Single Prediction ---
+with tab1:
+    # --- 4 Column Layout to drastically save vertical space ---
+    c1, c2, c3, c4 = st.columns(4)
     
-    except Exception as e:
-        # If it fails, print the attempted path so you can debug easily
-        st.error(f"Error loading model. Attempted path: {model_path}\nError details: {e}")
-        return None
+    with c1:
+        user_avg = st.slider("User Avg Rating", 1.0, 5.0, 4.2)
+        user_count = st.number_input("User Total Reviews", min_value=1, value=10)
+    with c2:
+        item_avg = st.slider("Item Avg Rating", 1.0, 5.0, 4.5)
+        item_count = st.number_input("Item Total Reviews", min_value=1, value=50)
+    with c3:
+        popularity_tier = st.selectbox("Popularity Tier", options=["Low", "Medium", "High", "Very High"])
+        rating_age = st.number_input("Rating Age (Days)", min_value=0, value=30)
+    with c4:
+        helpfulness = st.slider("Helpfulness Ratio", 0.0, 1.0, 0.8)
+        summary_len = st.number_input("Summary Length (Chars)", min_value=0, value=25)
+        
+    st.write("") # Tiny buffer before the button
+    
+    # --- Submit Button ---
+    if st.button("🔮 Predict User Reaction", use_container_width=True):
+        payload = {
+            "user_avg": user_avg, "user_count": user_count,
+            "item_avg": item_avg, "item_count": item_count,
+            "popularity_tier": popularity_tier, "rating_age": rating_age,
+            "summary_len": summary_len, "helpfulness": helpfulness
+        }
 
-model = load_model()
-
-# --- 2. Build the UI ---
-st.title("🛒 Amazon Fine Food: Review Predictor")
-st.markdown("Predict whether a user will **Like** (≥ 4 stars) or **Dislike** (< 4 stars) a product. Adjust the features below.")
-
-# Create a clean layout with two columns
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("User & Item Stats")
-    # Streamlit automatically handles base validation (min/max values)
-    user_avg = st.slider("User's Historical Avg Rating", 1.0, 5.0, 4.2, help="Average rating given by this user in the past.")
-    user_count = st.number_input("User's Total Reviews (Count)", min_value=1, value=10, help="Total number of reviews written by this user.")
-    item_avg = st.slider("Item's Global Avg Rating", 1.0, 5.0, 4.5, help="Average rating this product has received overall.")
-    item_count = st.number_input("Item's Total Reviews (Count)", min_value=1, value=50, help="Total number of reviews this product has.")
-
-with col2:
-    st.subheader("Contextual Features")
-    popularity_tier = st.selectbox("Item Popularity Tier", options=["Low", "Medium", "High", "Very High"])
-    rating_age = st.number_input("Rating Age (Days ago)", min_value=0, value=30)
-    summary_len = st.number_input("Review Summary Length (Chars)", min_value=0, value=25)
-    helpfulness = st.slider("Helpfulness Ratio (Upvotes / Total Votes)", 0.0, 1.0, 0.8)
-
-# --- 3. Process Inputs for the Model ---
-pop_mapping = {"Low": 0, "Medium": 1, "High": 2, "Very High": 3}
-log_user_count = np.log(user_count) if user_count > 0 else 0
-log_item_count = np.log(item_count) if item_count > 0 else 0
-
-features = np.array([[
-    user_avg, 1.0, log_user_count, 
-    item_avg, 1.0, log_item_count, 
-    pop_mapping[popularity_tier], rating_age, summary_len, helpfulness
-]])
-
-# --- 4. Model Inference & Output ---
-st.divider()
-
-if st.button("🔮 Predict User Reaction", use_container_width=True):
-    if model is None:
-        st.error("Model failed to load. Please check the model file.")
-    else:
-        # Improved UX: Loading indicator 
-        with st.spinner("Analyzing parameters..."):
-            time.sleep(0.5) # Simulated brief delay for UX feel
+        with st.spinner("Analyzing..."):
             try:
-                # Fast and reproducible inference 
-                prediction_prob = model.predict(features)[0]
+                response = requests.post(f"{API_URL}/predict", json=payload)
+                response.raise_for_status() 
                 
-                # Clear outputs 
-                if prediction_prob >= 0.5:
-                    st.success(f"### 🎉 Prediction: LIKED! \n**Confidence:** {prediction_prob * 100:.2f}%")
+                result = response.json()
+                prob = result["probability"]
+                
+                # Compact, punchy result text
+                if result["prediction"] == "Liked":
+                    st.success(f"### 🎉 LIKED! (Confidence: {prob * 100:.2f}%)")
                 else:
-                    st.error(f"### 👎 Prediction: DISLIKED. \n**Confidence:** {(1 - prediction_prob) * 100:.2f}%")
-            except Exception as e:
-                # Proper validation/error handling 
-                st.error(f"An error occurred during prediction: {e}")
+                    st.error(f"### 👎 DISLIKED. (Confidence: {(1 - prob) * 100:.2f}%)")
+                    
+            except requests.exceptions.RequestException as e:
+                st.error(f"API Connection Error. Details: {e}")
+
+# --- TAB 2: Batch Prediction ---
+with tab2:
+    st.info("Upload a CSV file with: `user_avg`, `user_count`, `item_avg`, `item_count`, `popularity_tier`, `rating_age`, `summary_len`, `helpfulness`")
+    
+    # "collapsed" hides the label to save even more vertical space!
+    uploaded_file = st.file_uploader("Upload CSV", type=["csv"], label_visibility="collapsed")
+    
+    if uploaded_file is not None:
+        if st.button("🚀 Run Batch Prediction", use_container_width=True):
+            with st.spinner("Processing batch via API..."):
+                try:
+                    files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
+                    response = requests.post(f"{API_URL}/batch-predict", files=files)
+                    response.raise_for_status()
+                    
+                    df_results = pd.DataFrame(response.json()["batch_results"])
+                    st.success("Batch processing complete!")
+                    
+                    # Force dataframe to be short so it doesn't cause a scrollbar
+                    st.dataframe(df_results, height=150) 
+                    
+                    csv = df_results.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Download Predictions as CSV",
+                        data=csv,
+                        file_name="batch_predictions.csv",
+                        mime="text/csv",
+                    )
+                except requests.exceptions.RequestException as e:
+                    st.error(f"API Connection Error. Details: {e}")
