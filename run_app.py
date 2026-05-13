@@ -17,7 +17,7 @@ def main():
     
     # We add cwd=base_dir just as an extra layer of safety
     api_process = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app.api:app", "--host", "127.0.0.1", "--port", "8000"],
+        [sys.executable, "-m", "uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"],
         cwd=base_dir
     )
 
@@ -26,7 +26,12 @@ def main():
 
     print("🎨 Starting the Frontend UI (Streamlit)...")
     ui_process = subprocess.Popen(
-        [sys.executable, "-m", "streamlit", "run", app_path],
+        [
+            sys.executable, "-m", "streamlit", "run", app_path,
+            "--server.address=0.0.0.0",
+            "--server.port=8501",
+            "--server.enableCORS=false"
+        ],
         cwd=base_dir
     )
 

@@ -1,0 +1,52 @@
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv
+*.egg-info
+dist
+build
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git
+.gitignore
+.github
+
+# Project files
+.pytest_cache
+.coverage
+htmlcov
+.env.local
+
+# Docker
+Dockerfile*
+docker-compose*.yaml
+.dockerignore
+
+# Testing
+test_batch.csv
+tests/
+
+# Documentation
+README.md
+docs/
+
+# Data (if large)
+Data/
+*.csv
+
+# Misc
+start.bat
+run_app.py

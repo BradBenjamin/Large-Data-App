@@ -1,0 +1,40 @@
+# docker-compose.override.yaml
+# 
+# This file is automatically merged with docker-compose.yaml
+# Use this for local development overrides (NOT committed to git)
+# 
+# Benefits:
+# - Keep production config in docker-compose.yaml
+# - Override specific things locally (mount code, remove healthchecks, etc.)
+# - Never commit this file
+# 
+# Usage: Just run `docker-compose up` - it auto-merges this file
+
+version: '3.9'
+
+services:
+  api:
+    # Mount local code to see changes without rebuilding
+    volumes:
+      - ./app:/app/app  # Hot reload for code changes
+      - ./model:/app/model:ro
+    
+    # Remove healthcheck for faster development
+    healthcheck:
+      disable: true
+    
+    # More verbose logging for development
+    environment:
+      - LOG_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1
+
+  frontend:
+    # Mount local code
+    volumes:
+      - ./app:/app/app  # Hot reload for code changes
+    
+    # Streamlit specific dev settings
+    environment:
+      - STREAMLIT_CLIENT_SHOWERRORDETAILS=true
+      - STREAMLIT_LOGGER_LEVEL=debug
+      - API_URL=http://localhost:8000  # Can access from host machine

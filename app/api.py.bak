@@ -1,0 +1,117 @@
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import lightgbm as lgb
+import numpy as np
+import pandas as pd
+import os
+import io
+
+app = FastAPI(title="Amazon Review Predictor API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- 1. Model Loading ---
+# Get absolute path to the model relative to this api.py file
+current_dir = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.abspath(os.path.join(current_dir, "..", "model", "amazon_lgb_model.txt"))
+
+try:
+    model = lgb.Booster(model_file=model_path)
+except Exception as e:
+    model = None
+    print(f"Failed to load model: {e}")
+
+# --- 2. Define Data Structures ---
+class ReviewFeatures(BaseModel):
+    user_avg: float
+    user_count: int
+    item_avg: float
+    item_count: int
+    popularity_tier: str
+    rating_age: int
+    summary_len: int
+    helpfulness: float
+
+# --- 3. Preprocessing Helper ---
+def preprocess_features(data: dict):
+    """Handles all transformations (logs, mappings) before inference."""
+    pop_mapping = {"Low": 0, "Medium": 1, "High": 2, "Very High": 3}
+    
+    # Safe log transformations
+    user_count = data.get("user_count", 0)
+    item_count = data.get("item_count", 0)
+    log_user_count = np.log(user_count) if user_count > 0 else 0
+    log_item_count = np.log(item_count) if item_count > 0 else 0
+    
+    # Safely get popularity tier, defaulting to 'Medium' if missing
+    tier = data.get("popularity_tier", "Medium")
+    tier_val = pop_mapping.get(tier, 1)
+
+    return [
+        data.get("user_avg", 3.0), 
+        1.0, # Placeholder feature based on your original code
+        log_user_count, 
+        data.get("item_avg", 3.0), 
+        1.0, # Placeholder feature based on your original code
+        log_item_count, 
+        tier_val, 
+        data.get("rating_age", 30), 
+        data.get("summary_len", 20), 
+        data.get("helpfulness", 0.5)
+    ]
+
+# --- 4. Endpoints ---
+@app.post("/predict")
+def predict_single(features: ReviewFeatures):
+    """Predicts sentiment for a single review."""
+    if model is None:
+        raise HTTPException(status_code=500, detail="Model is not loaded.")
+    
+    # Convert Pydantic model to dictionary and preprocess
+    feature_dict = features.dict()
+    processed_array = np.array([preprocess_features(feature_dict)])
+    
+    # Inference
+    prediction_prob = model.predict(processed_array)[0]
+    
+    return {
+        "probability": float(prediction_prob),
+        "prediction": "Liked" if prediction_prob >= 0.5 else "Disliked"
+    }
+
+@app.post("/batch-predict")
+async def predict_batch(file: UploadFile = File(...)):
+    """Predicts sentiment for a batch of reviews via CSV upload."""
+    if model is None:
+        raise HTTPException(status_code=500, detail="Model is not loaded.")
+    
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported.")
+    
+    try:
+        # Read the uploaded CSV
+        contents = await file.read()
+        df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+        
+        # Preprocess every row in the dataframe
+        processed_data = []
+        for _, row in df.iterrows():
+            processed_data.append(preprocess_features(row.to_dict()))
+            
+        # Batch inference
+        predictions = model.predict(np.array(processed_data))
+        
+        # Append results to the dataframe and return as JSON records
+        df['Prediction_Probability'] = predictions
+        df['Prediction'] = ["Liked" if p >= 0.5 else "Disliked" for p in predictions]
+        
+        return {"batch_results": df.to_dict(orient="records")}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Batch processing error: {str(e)}")

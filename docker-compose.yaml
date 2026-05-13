@@ -1,0 +1,57 @@
+version: '3.9'
+
+services:
+  # ==========================================
+  # BACKEND: FastAPI with LightGBM Model
+  # ==========================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: amazon-review-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MODEL_PATH=/app/model/amazon_lgb_model.txt
+    volumes:
+      - ./model:/app/model:ro  # Mount model as read-only
+      - ./app:/app/app:ro     # Mount app code as read-only
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - app-network
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000
+
+  # ==========================================
+  # FRONTEND: Streamlit UI
+  # ==========================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: amazon-review-ui
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - API_URL=http://api:8000  # Use service name, NOT localhost!
+      - STREAMLIT_SERVER_HEADLESS=true
+    depends_on:
+      api:
+        condition: service_healthy  # Wait for backend to be healthy
+    volumes:
+      - ./app:/app/app:ro
+    restart: unless-stopped
+    networks:
+      - app-network
+    command: streamlit run app/app.py --server.address=0.0.0.0 --server.port=8501 --server.enableCORS=false
+
+networks:
+  app-network:
+    driver: bridge

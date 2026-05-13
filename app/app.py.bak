@@ -7,9 +7,6 @@ import time
 # --- Configuration ---
 # Set layout to "wide" to give us more horizontal room for 4 columns
 st.set_page_config(page_title="Review Predictor", page_icon="🛒", layout="wide")
-
-# READ API_URL FROM ENVIRONMENT VARIABLE (for Docker compatibility)
-# Fallback to localhost for local development
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 # --- CSS Hacks to Eliminate Scrolling ---
@@ -37,10 +34,6 @@ st.markdown("""
 # Using HTML here allows us to force a negative margin-top to pull it up even higher
 st.markdown("<h2 style='text-align: center; margin-top: -40px; margin-bottom: 0px;'>🛒 Amazon Fine Food: Review Predictor</h2>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; margin-bottom: 10px;'>Predict whether a user will <b>Like</b> (≥ 4 stars) or <b>Dislike</b> (< 4 stars) this product.</p>", unsafe_allow_html=True)
-
-# DEBUG: Show API URL being used (remove in production)
-with st.expander("ℹ️ Debug Info"):
-    st.write(f"**API Endpoint:** `{API_URL}`")
 
 # Create tabs
 tab1, tab2 = st.tabs(["🎯 Single Prediction", "📂 Batch Prediction"])
@@ -76,7 +69,7 @@ with tab1:
 
         with st.spinner("Analyzing..."):
             try:
-                response = requests.post(f"{API_URL}/predict", json=payload, timeout=10)
+                response = requests.post(f"{API_URL}/predict", json=payload)
                 response.raise_for_status() 
                 
                 result = response.json()
@@ -88,12 +81,8 @@ with tab1:
                 else:
                     st.error(f"### 👎 DISLIKED. (Confidence: {(1 - prob) * 100:.2f}%)")
                     
-            except requests.exceptions.Timeout:
-                st.error("❌ API Request Timeout. Backend may be slow or unresponsive.")
-            except requests.exceptions.ConnectionError:
-                st.error(f"❌ Cannot connect to API at `{API_URL}`. Is the backend running?")
             except requests.exceptions.RequestException as e:
-                st.error(f"❌ API Error: {e}")
+                st.error(f"API Connection Error. Details: {e}")
 
 # --- TAB 2: Batch Prediction ---
 with tab2:
@@ -107,7 +96,7 @@ with tab2:
             with st.spinner("Processing batch via API..."):
                 try:
                     files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
-                    response = requests.post(f"{API_URL}/batch-predict", files=files, timeout=30)
+                    response = requests.post(f"{API_URL}/batch-predict", files=files)
                     response.raise_for_status()
                     
                     df_results = pd.DataFrame(response.json()["batch_results"])
@@ -123,9 +112,5 @@ with tab2:
                         file_name="batch_predictions.csv",
                         mime="text/csv",
                     )
-                except requests.exceptions.Timeout:
-                    st.error("❌ Batch processing timeout. Try a smaller file.")
-                except requests.exceptions.ConnectionError:
-                    st.error(f"❌ Cannot connect to API at `{API_URL}`. Is the backend running?")
                 except requests.exceptions.RequestException as e:
-                    st.error(f"❌ API Error: {e}")
+                    st.error(f"API Connection Error. Details: {e}")
