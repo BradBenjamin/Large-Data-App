@@ -1,3 +1,8 @@
 streamlit
 lightgbm
 numpy
+fastapi
+uvicorn
+pydantic
+requests
+pandas
