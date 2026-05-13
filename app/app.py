@@ -6,7 +6,8 @@ import time
 # --- Configuration ---
 # Set layout to "wide" to give us more horizontal room for 4 columns
 st.set_page_config(page_title="Review Predictor", page_icon="🛒", layout="wide")
-API_URL = "http://127.0.0.1:8000"
+# API_URL = "http://127.0.0.1:8000"
+API_URL = "https://large-data-app-backend.onrender.com"
 
 # --- CSS Hacks to Eliminate Scrolling ---
 st.markdown("""
