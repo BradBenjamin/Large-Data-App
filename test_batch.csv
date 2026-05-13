@@ -1,0 +1,6 @@
+user_avg,user_count,item_avg,item_count,popularity_tier,rating_age,summary_len,helpfulness
+4.5,12,4.8,150,High,10,35,0.95
+2.1,5,3.2,45,Medium,120,15,0.40
+5.0,2,4.9,500,Very High,2,50,1.00
+3.5,50,4.0,20,Low,365,10,0.10
+1.5,8,2.5,100,High,45,120,0.85
